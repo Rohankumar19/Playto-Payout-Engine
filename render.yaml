@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: playto-payout-web
+    env: docker
+    dockerfilePath: ./backend/Dockerfile
+    envVars:
+      - key: DJANGO_DEBUG
+        value: "False"
+      - key: DJANGO_ALLOWED_HOSTS
+        value: "*"
+  - type: worker
+    name: playto-payout-worker
+    env: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerCommand: celery -A playto_payout_engine worker -l info
+  - type: worker
+    name: playto-payout-beat
+    env: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerCommand: celery -A playto_payout_engine beat -l info
