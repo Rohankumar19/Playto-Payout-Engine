@@ -16,11 +16,12 @@ Production-grade payout engine with integer money accounting, transaction-safe p
 - Balance is computed from ledger using DB aggregation, not in-memory sums.
 
 ## Setup instructions
-1. Start PostgreSQL and Redis (e.g. Docker).
+1. Start PostgreSQL and Redis (e.g. Docker), or use **local demo mode** (SQLite + eager Celery) — see env vars below.
 2. Backend:
    - `cd backend`
    - create venv + activate
    - `pip install -r requirements.txt`
+   - copy `backend/.env.example` to `backend/.env` (optional: also a `.env` at repo root — both are loaded; `backend/.env` wins on duplicate keys)
    - set env vars (see below)
    - `python manage.py migrate`
    - `python manage.py runserver`
@@ -42,7 +43,16 @@ Production-grade payout engine with integer money accounting, transaction-safe p
 - `REDIS_URL`
 - `CORS_ALLOWED_ORIGINS`
 - `USE_SQLITE_FOR_DEV` (set `True` to run without PostgreSQL)
-- `CELERY_TASK_ALWAYS_EAGER` (set `True` to run tasks in-process without Redis worker)
+- `CELERY_TASK_ALWAYS_EAGER` (set `True` to run tasks in-process without Redis worker — **local demo only**; production must use Redis + a real Celery worker per the challenge)
+
+## Production vs local demo
+
+| Mode | Database | Celery |
+|------|-----------|--------|
+| **Production / submission deploy** | PostgreSQL | Redis + worker + beat (`CELERY_TASK_ALWAYS_EAGER` **off**) |
+| **Local quick demo** | SQLite (`USE_SQLITE_FOR_DEV=True`) | Eager (`CELERY_TASK_ALWAYS_EAGER=True`) — no Redis required |
+
+See `SUBMISSION.md` for GitHub + hosted deployment steps.
 
 ## How to run tests
 - `cd backend`

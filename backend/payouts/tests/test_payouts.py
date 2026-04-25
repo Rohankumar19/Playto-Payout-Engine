@@ -25,7 +25,8 @@ def test_idempotency_same_request_twice_returns_single_payout():
     first = client.post("/api/v1/payouts", payload, format="json", HTTP_IDEMPOTENCY_KEY=key)
     second = client.post("/api/v1/payouts", payload, format="json", HTTP_IDEMPOTENCY_KEY=key)
     assert first.status_code == 201
-    assert second.status_code in (201, 409)
+    assert second.status_code == 201
+    assert first.data == second.data
     assert Payout.objects.filter(merchant=merchant, idempotency_key=key).count() == 1
 
 

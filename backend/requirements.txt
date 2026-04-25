@@ -7,3 +7,4 @@ gunicorn>=22.0.0
 pytest>=8.2.0
 pytest-django>=4.8.0
 django-cors-headers>=4.4.0
+python-dotenv>=1.0.1
