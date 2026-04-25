@@ -70,7 +70,13 @@ CELERY_BROKER_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 CELERY_RESULT_BACKEND = CELERY_BROKER_URL
 CELERY_TASK_ALWAYS_EAGER = _env_bool("CELERY_TASK_ALWAYS_EAGER", False)
 CELERY_TASK_EAGER_PROPAGATES = _env_bool("CELERY_TASK_EAGER_PROPAGATES", True)
+from corsheaders.defaults import default_headers
+
 CORS_ALLOWED_ORIGINS = [origin.strip() for origin in os.getenv("CORS_ALLOWED_ORIGINS", "http://localhost:5173").split(",") if origin.strip()]
+
+CORS_ALLOW_HEADERS = list(default_headers) + [
+    "idempotency-key",
+]
 CELERY_BEAT_SCHEDULE = {
     "retry-stuck-payouts-every-10s": {
         "task": "payouts.tasks.retry_stuck_payouts_task",

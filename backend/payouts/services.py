@@ -6,6 +6,12 @@ from dataclasses import dataclass
 from django.db import transaction
 from django.db.models import Q, Sum
 from django.utils import timezone
+from django.conf import settings
+
+def lock(qs):
+    if getattr(settings, 'USE_SQLITE_FOR_DEV', False):
+        return qs
+    return qs.select_for_update()
 
 from .models import (
     BankAccount,
@@ -49,7 +55,7 @@ def merchant_balances_qs(merchant_id: int) -> dict:
     debits = agg["debits"] or 0
     holds = agg["holds"] or 0
     refunds = agg["refunds"] or 0
-    held = max(holds - refunds, 0)
+    held = max(holds - refunds - debits, 0)
     return {
         "available_balance_paise": credits - debits - held,
         "held_balance_paise": held,
@@ -62,8 +68,8 @@ def create_payout(*, merchant_id: int, amount_paise: int, bank_account_id: int, 
     payload = {"merchant_id": merchant_id, "amount_paise": amount_paise, "bank_account_id": bank_account_id}
     p_hash = request_hash(payload)
     with transaction.atomic():
-        merchant = Merchant.objects.select_for_update().get(id=merchant_id)
-        idem, created = IdempotencyRecord.objects.select_for_update().get_or_create(
+        merchant = lock(Merchant.objects).get(id=merchant_id)
+        idem, created = lock(IdempotencyRecord.objects).get_or_create(
             merchant=merchant,
             key=idempotency_key,
             defaults={"request_hash": p_hash, "state": "processing", "expires_at": timezone.now() + timezone.timedelta(hours=24)},
@@ -95,7 +101,7 @@ def create_payout(*, merchant_id: int, amount_paise: int, bank_account_id: int, 
             else:
                 raise IdempotencyConflict("Request with same Idempotency-Key is in progress")
 
-        bank = BankAccount.objects.select_for_update().get(id=bank_account_id, merchant=merchant, is_active=True)
+        bank = lock(BankAccount.objects).get(id=bank_account_id, merchant=merchant, is_active=True)
         balances = merchant_balances_qs(merchant.id)
         if balances["available_balance_paise"] < amount_paise:
             idem.state = "completed"
@@ -127,7 +133,7 @@ def create_payout(*, merchant_id: int, amount_paise: int, bank_account_id: int, 
 
 def finalize_success(payout: Payout) -> None:
     with transaction.atomic():
-        payout = Payout.objects.select_for_update().get(id=payout.id)
+        payout = lock(Payout.objects).get(id=payout.id)
         if payout.status == PayoutStatus.COMPLETED:
             return
         payout.transition_to(PayoutStatus.COMPLETED)
@@ -137,7 +143,7 @@ def finalize_success(payout: Payout) -> None:
 
 def finalize_failure(payout: Payout, reason: str) -> None:
     with transaction.atomic():
-        payout = Payout.objects.select_for_update().get(id=payout.id)
+        payout = lock(Payout.objects).get(id=payout.id)
         if payout.status == PayoutStatus.FAILED or payout.hold_released:
             return
         payout.transition_to(PayoutStatus.FAILED)

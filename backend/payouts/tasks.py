@@ -2,14 +2,20 @@ from celery import shared_task
 from django.db import transaction
 from django.utils import timezone
 
+from django.conf import settings
 from .models import Payout, PayoutStatus
 from .services import finalize_failure, finalize_success, simulate_outcome
+
+def lock(qs):
+    if getattr(settings, 'USE_SQLITE_FOR_DEV', False):
+        return qs
+    return qs.select_for_update()
 
 
 @shared_task
 def process_payout_task(payout_id: int) -> None:
     with transaction.atomic():
-        payout = Payout.objects.select_for_update().get(id=payout_id)
+        payout = lock(Payout.objects).get(id=payout_id)
         if payout.status not in {PayoutStatus.PENDING, PayoutStatus.PROCESSING}:
             return
         if payout.status == PayoutStatus.PENDING:
@@ -29,7 +35,7 @@ def retry_stuck_payouts_task() -> None:
     cutoff = timezone.now() - timezone.timedelta(seconds=30)
     for payout in Payout.objects.filter(status=PayoutStatus.PROCESSING, updated_at__lt=cutoff):
         with transaction.atomic():
-            locked = Payout.objects.select_for_update().get(id=payout.id)
+            locked = lock(Payout.objects).get(id=payout.id)
             if locked.status != PayoutStatus.PROCESSING:
                 continue
             if locked.attempt_count >= 3:
