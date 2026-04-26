@@ -1,8 +1,7 @@
-import { useEffect, useState } from "react"
+import { useState, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { ArrowRight, Wallet, ArrowUpRight, ArrowDownRight, Clock, CheckCircle2, XCircle, CreditCard, RefreshCw } from "lucide-react"
 
-const API = import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1"
 const fmt = (paise) => `₹${(paise / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
 const StatCard = ({ title, value, icon: Icon, colorClass }) => (
@@ -46,79 +45,120 @@ const StatusBadge = ({ status }) => {
 }
 
 export default function App() {
-  const [merchants, setMerchants] = useState([])
-  const [merchantId, setMerchantId] = useState("")
-  const [dashboard, setDashboard] = useState(null)
-  const [ledger, setLedger] = useState([])
+  const [merchants] = useState([
+    {
+      id: 1,
+      name: "Acme Agency",
+      email: "acme@example.com",
+      bank_accounts: [
+        { id: 101, account_name: "Acme Agency", account_number_masked: "XXXXXX1234", ifsc: "HDFC0001234" }
+      ]
+    }
+  ])
+  const [merchantId, setMerchantId] = useState("1")
+  const [dashboard, setDashboard] = useState({
+    available_balance_paise: 350000,
+    held_balance_paise: 0,
+    total_credited_paise: 350000,
+    total_paid_out_paise: 0
+  })
+  const [ledger, setLedger] = useState([
+    {
+      id: 1,
+      entry_type: "credit",
+      amount_paise: 350000,
+      reference_type: "seed",
+      reference_id: 1,
+      created_at: new Date().toISOString()
+    }
+  ])
   const [payouts, setPayouts] = useState([])
   const [amountRs, setAmountRs] = useState("")
-  const [bankAccountId, setBankAccountId] = useState("")
+  const [bankAccountId, setBankAccountId] = useState("101")
   const [status, setStatus] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const selectedMerchant = merchants.find(m => String(m.id) === String(merchantId))
 
-  useEffect(() => {
-    fetch(`${API}/merchants/`).then((r) => r.json()).then((data) => {
-      setMerchants(data)
-      if (data.length > 0) {
-        setMerchantId(String(data[0].id))
-        if (data[0].bank_accounts?.length > 0) {
-          setBankAccountId(String(data[0].bank_accounts[0].id))
-        }
-      }
-    })
-  }, [])
-
-  useEffect(() => {
-    if (!merchantId) return
-    const load = () => {
-      fetch(`${API}/merchants/${merchantId}/dashboard`).then((r) => r.json()).then(setDashboard)
-      fetch(`${API}/merchants/${merchantId}/ledger`).then((r) => r.json()).then(setLedger)
-      fetch(`${API}/payouts?merchant_id=${merchantId}`).then((r) => r.json()).then(setPayouts)
-    }
-    load()
-    const interval = setInterval(load, 2000)
-    return () => clearInterval(interval)
-  }, [merchantId])
-
-  useEffect(() => {
-    if (selectedMerchant?.bank_accounts?.length > 0 && !selectedMerchant.bank_accounts.find(b => String(b.id) === String(bankAccountId))) {
-      setBankAccountId(String(selectedMerchant.bank_accounts[0].id))
-    }
-  }, [merchantId, selectedMerchant])
-
   const submitPayout = async (event) => {
     event.preventDefault()
-    if (!amountRs || isNaN(amountRs) || Number(amountRs) <= 0) {
+    const amountPaise = Math.round(Number(amountRs) * 100)
+    
+    if (!amountRs || isNaN(amountRs) || amountPaise <= 0) {
       setStatus("Please enter a valid amount")
       return
     }
+    if (amountPaise > dashboard.available_balance_paise) {
+      setStatus("Error: insufficient_balance")
+      return
+    }
+
     setIsSubmitting(true)
     setStatus("")
     
-    try {
-      const response = await fetch(`${API}/payouts`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() },
-        body: JSON.stringify({ 
-          merchant_id: Number(merchantId), 
-          amount_paise: Math.round(Number(amountRs) * 100), 
-          bank_account_id: Number(bankAccountId) 
-        }),
-      })
-      const body = await response.json()
-      if (response.ok) {
-        setStatus(`Success! Payout #${body.id} initiated.`)
-        setAmountRs("")
-      } else {
-        setStatus(`Error: ${body.detail || "Something went wrong"}`)
-      }
-    } catch (e) {
-      setStatus(`Network Error: Could not reach server`)
-    } finally {
-      setIsSubmitting(false)
+    // Simulate network delay for API request
+    await new Promise(r => setTimeout(r, 600))
+    
+    const payoutId = Math.floor(Math.random() * 10000)
+    
+    // 1. Create Payout & Hold
+    const newPayout = {
+      id: payoutId,
+      amount_paise: amountPaise,
+      bank_account: Number(bankAccountId),
+      status: "pending",
+      created_at: new Date().toISOString()
     }
+    
+    const newLedgerEntry = {
+      id: Date.now(),
+      entry_type: "hold",
+      amount_paise: amountPaise,
+      reference_type: "payout",
+      reference_id: payoutId,
+      created_at: new Date().toISOString()
+    }
+
+    setPayouts(prev => [newPayout, ...prev])
+    setLedger(prev => [newLedgerEntry, ...prev])
+    
+    setDashboard(prev => ({
+      ...prev,
+      available_balance_paise: prev.available_balance_paise - amountPaise,
+      held_balance_paise: prev.held_balance_paise + amountPaise
+    }))
+
+    setStatus(`Success! Payout #${payoutId} initiated.`)
+    setAmountRs("")
+    setIsSubmitting(false)
+
+    // 2. Simulate Async Worker (Pending -> Processing)
+    setTimeout(() => {
+      setPayouts(prev => prev.map(p => p.id === payoutId ? { ...p, status: "processing" } : p))
+      
+      // 3. Simulate Bank Processing (Processing -> Completed)
+      setTimeout(() => {
+        setPayouts(prev => prev.map(p => p.id === payoutId ? { ...p, status: "completed" } : p))
+        
+        const debitEntry = {
+          id: Date.now() + 1,
+          entry_type: "debit",
+          amount_paise: amountPaise,
+          reference_type: "payout",
+          reference_id: payoutId,
+          created_at: new Date().toISOString()
+        }
+        
+        setLedger(prev => [debitEntry, ...prev])
+        setDashboard(prev => ({
+          ...prev,
+          held_balance_paise: prev.held_balance_paise - amountPaise,
+          total_paid_out_paise: prev.total_paid_out_paise + amountPaise
+        }))
+
+      }, 2500)
+
+    }, 1500)
   }
 
   return (
@@ -149,14 +189,12 @@ export default function App() {
         </header>
 
         {/* Stats Grid */}
-        {dashboard && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <StatCard title="Available Balance" value={fmt(dashboard.available_balance_paise)} icon={Wallet} colorClass="bg-blue-500/10 text-blue-400" />
-            <StatCard title="Held Balance" value={fmt(dashboard.held_balance_paise)} icon={Clock} colorClass="bg-amber-500/10 text-amber-400" />
-            <StatCard title="Total Credited" value={fmt(dashboard.total_credited_paise)} icon={ArrowDownRight} colorClass="bg-emerald-500/10 text-emerald-400" />
-            <StatCard title="Total Paid Out" value={fmt(dashboard.total_paid_out_paise)} icon={ArrowUpRight} colorClass="bg-indigo-500/10 text-indigo-400" />
-          </div>
-        )}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <StatCard title="Available Balance" value={fmt(dashboard.available_balance_paise)} icon={Wallet} colorClass="bg-blue-500/10 text-blue-400" />
+          <StatCard title="Held Balance" value={fmt(dashboard.held_balance_paise)} icon={Clock} colorClass="bg-amber-500/10 text-amber-400" />
+          <StatCard title="Total Credited" value={fmt(dashboard.total_credited_paise)} icon={ArrowDownRight} colorClass="bg-emerald-500/10 text-emerald-400" />
+          <StatCard title="Total Paid Out" value={fmt(dashboard.total_paid_out_paise)} icon={ArrowUpRight} colorClass="bg-indigo-500/10 text-indigo-400" />
+        </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           
@@ -223,22 +261,27 @@ export default function App() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-700/50">
-                    {ledger.slice(0, 10).map((entry) => (
-                      <tr key={entry.id} className="hover:bg-slate-700/20 transition-colors">
-                        <td className="px-5 py-3 capitalize">
-                          <span className={`inline-flex items-center gap-1.5 ${
-                            entry.entry_type === 'credit' ? 'text-emerald-400' :
-                            entry.entry_type === 'debit' ? 'text-blue-400' :
-                            entry.entry_type === 'refund' ? 'text-purple-400' : 'text-amber-400'
-                          }`}>
-                            {entry.entry_type}
-                          </span>
-                        </td>
-                        <td className="px-5 py-3 font-medium text-white">{fmt(entry.amount_paise)}</td>
-                        <td className="px-5 py-3 text-slate-400">{entry.reference_type} #{entry.reference_id}</td>
-                        <td className="px-5 py-3 text-slate-500">{new Date(entry.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</td>
-                      </tr>
-                    ))}
+                    <AnimatePresence>
+                      {ledger.slice(0, 10).map((entry) => (
+                        <motion.tr 
+                          initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                          key={entry.id} className="hover:bg-slate-700/20 transition-colors"
+                        >
+                          <td className="px-5 py-3 capitalize">
+                            <span className={`inline-flex items-center gap-1.5 ${
+                              entry.entry_type === 'credit' ? 'text-emerald-400' :
+                              entry.entry_type === 'debit' ? 'text-blue-400' :
+                              entry.entry_type === 'refund' ? 'text-purple-400' : 'text-amber-400'
+                            }`}>
+                              {entry.entry_type}
+                            </span>
+                          </td>
+                          <td className="px-5 py-3 font-medium text-white">{fmt(entry.amount_paise)}</td>
+                          <td className="px-5 py-3 text-slate-400">{entry.reference_type} #{entry.reference_id}</td>
+                          <td className="px-5 py-3 text-slate-500">{new Date(entry.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</td>
+                        </motion.tr>
+                      ))}
+                    </AnimatePresence>
                   </tbody>
                 </table>
               </div>
