@@ -2,7 +2,7 @@ import { useEffect, useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { ArrowRight, Wallet, ArrowUpRight, ArrowDownRight, Clock, CheckCircle2, XCircle, CreditCard, RefreshCw } from "lucide-react"
 
-const API = "http://localhost:8000/api/v1"
+const API = import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1"
 const fmt = (paise) => `₹${(paise / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
 const StatCard = ({ title, value, icon: Icon, colorClass }) => (
