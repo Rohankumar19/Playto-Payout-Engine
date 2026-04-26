@@ -66,3 +66,6 @@ See `SUBMISSION.md` for GitHub + hosted deployment steps.
   - provision PostgreSQL + Redis
   - run migrations on deploy
   - use included templates: `railway.json`, `render.yaml`, `fly.toml`, `Procfile`
+
+  <img width="1368" height="912" alt="image" src="https://github.com/user-attachments/assets/894e4d42-2c70-4216-9416-6c47d4cf9d45" />
+
